@@ -109,11 +109,8 @@ int memoryR(long int number_of_elements, char *path)
 {
     double read_time = 0;
     srand(time(0));
-    char *buffer;
-    buffer = malloc( sizeof(*buffer) * number_of_elements);
-    
-    for (int i = 0; i < number_of_elements; i++)
-        buffer[i] = rand() % 1000;
+    int ch;
+   
 
     struct timespec ts2, ts1;
    
@@ -121,14 +118,16 @@ int memoryR(long int number_of_elements, char *path)
 
     fp = fopen(path, "r");
 
-    clock_gettime(CLOCK_REALTIME, &ts1);
-    
-    while (!feof(fp))
-        fgets(buffer, number_of_elements, fp);
-    
-    clock_gettime(CLOCK_REALTIME, &ts2);
-    read_time += 1000000000 * (ts2.tv_sec - ts1.tv_sec) + (ts2.tv_nsec - ts1.tv_nsec);
+	if ( ! fp )
+        return 1;
 
+
+	clock_gettime(CLOCK_REALTIME, &ts1);
+	while ( ( ch = fgetc(fp) ) != EOF );
+	clock_gettime(CLOCK_REALTIME, &ts2);
+    read_time += 1000000000 * (ts2.tv_sec - ts1.tv_sec) + (ts2.tv_nsec - ts1.tv_nsec);
+   
+ 	
     fclose(fp);
     
     return read_time;
@@ -139,23 +138,31 @@ int memoryR(long int number_of_elements, char *path)
 int memoryW(long int number_of_elements, char *path)
 {
     double write_time = 0;
-    char *buffer;
+    int *buffer;
     buffer = malloc( sizeof(*buffer) * number_of_elements);
     struct timespec ts2, ts1;
     FILE *fp;
+
+	for (int i = 0; i < number_of_elements; i++)
+        buffer[i] = rand() % 1000;
     
     fp = fopen(path, "w");
+	if ( ! fp )
+        return 1;
 
-    clock_gettime(CLOCK_REALTIME, &ts1);
+
 
     for (int i = 0; i < number_of_elements; i++)
-        fputc(buffer[i],fp);
-        
-    clock_gettime(CLOCK_REALTIME, &ts2);
-    write_time += 1000000000 * (ts2.tv_sec - ts1.tv_sec) + (ts2.tv_nsec - ts1.tv_nsec);
+	{
+		clock_gettime(CLOCK_REALTIME, &ts1);
+        fprintf(fp, "%d", buffer[i]);
+ 		clock_gettime(CLOCK_REALTIME, &ts2);
+    	write_time += 1000000000 * (ts2.tv_sec - ts1.tv_sec) + (ts2.tv_nsec - ts1.tv_nsec);
+      
+    }  
+   
     
     fclose(fp);
-
     return write_time;
 }
 
@@ -165,102 +172,142 @@ void Math(int n, char *operation, long int number_of_elements)
 {
     double averageW = 0,  absErrorW = 0, relErrorW = 0, writeBandwidth = 0; 
     double read_time = 0, write_time = 0;
-
+	
+	double dispersion = 0;
+	double *testArR;
+	double *testArW;
+	testArR = malloc( sizeof(*testArR) * n);
+	testArW = malloc( sizeof(*testArW) * n);
     double averageR = 0, absErrorR = 0, relErrorR = 0;
     double readBandwidth = 0; 
 
-    double *testAr;
-
-    testAr = malloc( sizeof(*testAr) * n);
-
     if(strcmp (operation, "RAM") == 0)
         {
+			write_time = RAMw(number_of_elements);
             read_time = RAMr(number_of_elements);
-            write_time = RAMw(number_of_elements);
-
+        
             for(int i = 0; i < n; i++)
             {
+
+				averageW += RAMw(number_of_elements);		
+				testArW[i] = RAMw(number_of_elements);
+	
                 averageR += RAMr(number_of_elements);
-                averageW += RAMw(number_of_elements);
+                testArR[i] = RAMr(number_of_elements);				
+				
             } 
 
             averageR /= n; averageW /= n;
 
-            /*for(int i = 0; i < n; i++) 
-                dispersion += pow(testAr[i] - averageR, 2);*/
+            for(int i = 0; i < n; i++) 
+                dispersion += pow(testArR[i] - averageR, 2) ;
             
-            absErrorR = averageR - read_time;
-            relErrorR = absErrorR / averageR;
+			absErrorR = sqrt(dispersion / n);
+            relErrorR = (absErrorR/ averageR) * 100;		
 
-            absErrorW = averageW - write_time;
-            relErrorW = absErrorW / averageW;
+			readBandwidth = (number_of_elements / averageR) * pow(10, 6);
+			
+			dispersion = 0;
+
+			for(int i = 0; i < n; i++) 
+                dispersion += pow(testArW[i] - averageW, 2);
+
+            absErrorW = sqrt(dispersion / n);
+            relErrorW = (absErrorW/ averageW) * 100;
           
-            writeBandwidth = (number_of_elements / averageW) / pow(10, 6);
-            readBandwidth = (number_of_elements / averageR) / pow(10, 6);
-
+            writeBandwidth = (number_of_elements / averageW) * pow(10, 6);
+			dispersion = 0;
         }   
 
         else if(strcmp (operation, "SSD") == 0)
         {
-            read_time = memoryR(number_of_elements, "txt.txt");
-            write_time = memoryW(number_of_elements, "txt.txt");
 
+            write_time = memoryW(number_of_elements, "txt.txt");
+			read_time = memoryR(number_of_elements, "txt.txt");            
+			
+			remove ("txt.txt");
             for(int i = 0; i < n; i++)
             {
-                averageR += memoryR(number_of_elements, "txt.txt");
+				testArW[i] = memoryW(number_of_elements, "txt.txt");
                 averageW += memoryW(number_of_elements, "txt.txt");
+			    
+                averageR += memoryR(number_of_elements, "txt.txt");
+				testArR[i] = memoryR(number_of_elements, "txt.txt");
+			
+				remove ("txt.txt");
             } 
 
-            averageR /= n; averageW /= n;
+           averageR /= n; averageW /= n;
 
-            /*for(int i = 0; i < n; i++) 
-                dispersion += pow(testAr[i] - averageR, 2);*/
+            for(int i = 0; i < n; i++) 
+                dispersion += pow(testArR[i] - averageR, 2) ;
+           
             
-            absErrorR = averageR - read_time;
-            relErrorR = absErrorR / averageR;
+			absErrorR = sqrt(dispersion / n);
+            relErrorR = (absErrorR/ averageR) * 100;		
 
-            absErrorW = averageW - write_time;
-            relErrorW = absErrorW / averageW;
+			readBandwidth = (number_of_elements / averageR) * pow(10, 6);
+			
+			dispersion = 0;
+			
+			for(int i = 0; i < n; i++) 
+                dispersion += pow(testArW[i] - averageW, 2) ;
+
+            absErrorW = sqrt(dispersion / n);
+            relErrorW = (absErrorW/ averageW) * 100;
           
-            writeBandwidth = (number_of_elements / averageW) / pow(10, 6);
-            readBandwidth = (number_of_elements / averageR) / pow(10, 6);
-
+            writeBandwidth = (number_of_elements / averageW) * pow(10, 6);
+			dispersion = 0;
+		
         }
 
         else if(strcmp (operation, "flash") == 0)
         {
+			write_time = memoryW(number_of_elements, "/run/media/fuki/'ADATA UFD'/txt.txt");
             read_time = memoryR(number_of_elements, "/run/media/fuki/'ADATA UFD'/txt.txt");
-            write_time = memoryW(number_of_elements, "/run/media/fuki/'ADATA UFD'/txt.txt");
-
+           	remove ("/run/media/fuki/'ADATA UFD'/txt.txt");
             for(int i = 0; i < n; i++)
             {
-                averageR += memoryR(number_of_elements, "/run/media/fuki/'ADATA UFD'/txt.txt");
+				
+				testArW[i]  = memoryW(number_of_elements, "/run/media/fuki/'ADATA UFD'/txt.txt");
                 averageW += memoryW(number_of_elements, "/run/media/fuki/'ADATA UFD'/txt.txt");
+
+                averageR += memoryR(number_of_elements, "/run/media/fuki/'ADATA UFD'/txt.txt");
+				testArR[i] =  memoryR(number_of_elements, "/run/media/fuki/'ADATA UFD'/txt.txt");
+				remove ("/run/media/fuki/'ADATA UFD'/txt.txt");
             } 
 
             averageR /= n; averageW /= n;
 
-            /*for(int i = 0; i < n; i++) 
-                dispersion += pow(testAr[i] - averageR, 2);*/
-            
-            absErrorR = averageR - read_time;
-            relErrorR = absErrorR / averageR;
+            for(int i = 0; i < n; i++) 
+                dispersion += pow(testArR[i] - averageR, 2);
+                        
+			absErrorR = sqrt(dispersion / n);
+            relErrorR = (absErrorR/ averageR) * 100;		
+			readBandwidth = (number_of_elements / averageR) * pow(10, 6);
+			
+			dispersion = 0;
+	
+			for(int i = 0; i < n; i++) 
+                dispersion += pow(testArW[i] - averageW, 2);
 
-            absErrorW = averageW - write_time;
-            relErrorW = absErrorW / averageW;
+            absErrorW = sqrt(dispersion / n);
+            relErrorW = (absErrorW/ averageW) * 100;
           
-            writeBandwidth = (number_of_elements / averageW) / pow(10, 6);
-            readBandwidth = (number_of_elements / averageR) / pow(10, 6);
+            writeBandwidth = (number_of_elements / averageW) * pow(10, 6);
+			dispersion = 0;
+
         }
     
 
     FILE  *file;
-
-	file = fopen("itog.cvs", "a"); 
+	free(testArR);
+	free(testArW);
+	file = fopen("itog1.cvs", "a"); 
     
-    fprintf(file, "MemoryType: %s , BlockSize: %ld, ElementType: int, BufferSize: , Timer: clock_gettime(),  ", operation, number_of_elements);
-	fprintf(file, "WriteTime: %.6f , AverageWriteTime: %.6f , WriteBandwidth: %.6f , AbsError(write): %.6f , RelError(write): %.6f  ", write_time, averageW, writeBandwidth, absErrorW, relErrorW);
-	fprintf(file, "ReadTime: %.6f , AverageReadTime: %.6f , ReadBandwidth: %.6f , AbsError(read): %.6f , RelError(read): %.6f  ", read_time, averageR, readBandwidth, absErrorR, relErrorR);
+    fprintf(file, "\nMemoryType: %s , BlockSize: %ld, ElementType: int, BufferSize: , Timer: clock_gettime(),  ", operation, number_of_elements);
+	fprintf(file, "WriteTime: %.3f , AverageWriteTime: %.3f , WriteBandwidth: %.3f , AbsError(write): %.3f , RelError(write): %.3f  ", write_time, averageW, writeBandwidth, absErrorW, relErrorW);
+	fprintf(file, "ReadTime: %.3f , AverageReadTime: %.3f , ReadBandwidth: %.3f , AbsError(read): %.3f , RelError(read): %.3f ", read_time, averageR, readBandwidth, absErrorR, relErrorR);
 
     fclose(file);
 
@@ -283,7 +330,7 @@ void Math(int n, char *operation, long int number_of_elements)
 int main(int argc, char **argv)
 {
     long int number_of_elements;
-    if (argc >= 5)
+    if (argc >= 4)
     {
         if (strcmp (argv[1], "m") == 0)
         {
@@ -302,7 +349,8 @@ int main(int argc, char **argv)
                     else
                         n = atoi(argv[5]);
                     printf("%ld\n", number_of_elements);
-                    Math(n, "RAM", number_of_elements);
+ 					printf("%d\n", n);
+                     Math(n, "SSD", number_of_elements);  
                                       
                 }
 
@@ -319,8 +367,9 @@ int main(int argc, char **argv)
                     if (strcmp (argv[5], "l") == 0)
                         n = atoi(argv[6]);
                     else
-                        n = atoi(argv[7]);
-
+                        n = atoi(argv[5]);
+					 printf("%ld\n", number_of_elements);
+ 					printf("%d\n", n);
                     Math(n, "SSD", number_of_elements);                       
                 }
 
@@ -337,7 +386,7 @@ int main(int argc, char **argv)
                     if (strcmp (argv[5], "l") == 0)
                         n = atoi(argv[6]);
                     else
-                        n = atoi(argv[7]);
+                        n = atoi(argv[5]);
 
                     Math(n, "flash", number_of_elements);
                    
